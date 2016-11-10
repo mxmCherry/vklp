@@ -5,13 +5,24 @@ Low-level Go (Golang) [vk.com longpoll](https://vk.com/dev/using_longpoll) clien
 WARNING - work in progress!
 
 
+# TODO
+
+- [ ] review update user ID type - probably, can be negative (group messages?)
+- [ ] update pooling (`sync.Pool`, `.Release` method on each update type)
+- [ ] tests (`Client`, `unmarshalUpdate`)
+- [ ] godoc comments
+- [ ] more sophisticated types with custom `unmarshalJSON` (timestamp - `time.Time`, `uint8` - `bool`, attachments - should be a list of `Attachment` etc)
+- [ ] think of possibility of returning `[]byte` from `unmarshalUpdate` to allow clients handle updates, unsupported by this lib
+- [ ] think of possibility to store both update object and unmarshaller error (should never occur, but theoretically will allow to skip "broken" updates instead of rejecting entire batch)
+
+
 # Example
 
 ```go
 package main
 
 import (
-	"log"
+	"fmt"
 	"time"
 
 	"github.com/mxmCherry/vkapi"
@@ -57,12 +68,27 @@ func main() {
 	defer lp.Stop()
 
 	for {
-		upd, err := lp.Next()
+		update, err := lp.Next()
 		if err != nil {
 			panic(err.Error())
 		}
 
-		log.Println(string(upd)) // upd is raw JSON []byte slice
-	}
+		switch upd := update.(type) {
+
+		case *vklp.AddNewMessage:
+			fmt.Printf("new message from %d: %s\n", upd.FromID, upd.Text)
+
+		case *vklp.FriendOnline:
+			fmt.Printf("friend online: %d\n", upd.UserID)
+
+		case *vklp.FriendOffline:
+			fmt.Printf("friend offline: %d\n", upd.UserID)
+
+		default:
+			// reject updates, that you are not interested in:
+			fmt.Printf("rejected update: %#v\n", upd)
+
+		} // end switch
+	} // end for
 }
 ```

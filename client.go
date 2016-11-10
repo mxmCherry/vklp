@@ -16,7 +16,7 @@ const (
 )
 
 type Client interface {
-	Next() ([]byte, error)
+	Next() (interface{}, error)
 	Stop() error
 }
 
@@ -84,7 +84,7 @@ type client struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	updates [][]byte
+	updates []interface{}
 }
 
 func (c *client) Stop() error {
@@ -98,7 +98,7 @@ func (c *client) Stop() error {
 	return nil
 }
 
-func (c *client) Next() ([]byte, error) {
+func (c *client) Next() (interface{}, error) {
 	select {
 	case <-c.ctx.Done():
 		return nil, c.ctx.Err()
@@ -140,10 +140,15 @@ func (c *client) Next() ([]byte, error) {
 		return nil, *wrapper.Failed
 	}
 
-	c.updates = make([][]byte, len(wrapper.Updates))
-	for i, upd := range wrapper.Updates {
-		c.updates[i] = upd
+	updates := make([]interface{}, len(wrapper.Updates))
+	for i, b := range wrapper.Updates {
+		upd, err := unmarshalUpdate(b)
+		if err != nil {
+			return nil, err
+		}
+		updates[i] = upd
 	}
+	c.updates = updates
 
 	q := c.url.Query()
 	q.Set("ts", strconv.FormatInt(wrapper.TS, 10))
