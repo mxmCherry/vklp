@@ -8,6 +8,7 @@ WARNING - work in progress!
 # TODO
 
 - [x] review update user ID type - probably, can be negative (groups / public pages: `userID = groupID + 1_000_000_000`)
+- [ ] review [vk.com/dev/using_longpoll](https://vk.com/dev/using_longpoll) - Russian version seems to be more accurate/detailed
 - [ ] update pooling (`sync.Pool`, `.Release` method on each update type)
 - [ ] tests (`Client`, `unmarshalUpdate`)
 - [ ] godoc comments
