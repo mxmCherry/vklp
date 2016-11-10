@@ -7,12 +7,12 @@ WARNING - work in progress!
 
 # TODO
 
-- [ ] review update user ID type - probably, can be negative (group messages?)
+- [x] review update user ID type - probably, can be negative (groups / public pages: `userID = groupID + 1_000_000_000`)
 - [ ] update pooling (`sync.Pool`, `.Release` method on each update type)
 - [ ] tests (`Client`, `unmarshalUpdate`)
 - [ ] godoc comments
 - [ ] more sophisticated types with custom `unmarshalJSON` (timestamp - `time.Time`, `uint8` - `bool`, attachments - should be a list of `Attachment` etc)
-- [ ] think of possibility of returning `[]byte` from `unmarshalUpdate` to allow clients handle updates, unsupported by this lib
+- [x] think of possibility of returning `[]byte` to allow clients handle updates, unsupported by this lib (some events are not even documented on [vk.com/dev/using_longpoll](https://vk.com/dev/using_longpoll))
 - [ ] think of possibility to store both update object and unmarshaller error (should never occur, but theoretically will allow to skip "broken" updates instead of rejecting entire batch)
 
 

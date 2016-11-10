@@ -149,7 +149,7 @@ func unmarshalUpdate(b []byte) (interface{}, error) {
 		return u, nil
 
 	default:
-		return nil, fmt.Errorf("vklp: unsupported update type %d", tp)
+		return b, nil
 
 	}
 }
