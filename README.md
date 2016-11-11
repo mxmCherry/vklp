@@ -59,9 +59,11 @@ func main() {
 	// consume updates with longpoll:
 
 	lp, err := vklp.New(vklp.Options{
-		Server: lpRes.Server,
-		Key:    lpRes.Key,
-		TS:     time.Unix(lpRes.TS, 0),
+		Server:  lpRes.Server,
+		Key:     lpRes.Key,
+		TS:      time.Unix(lpRes.TS, 0),
+		Mode:    vklp.ModeAttachments | vklp.ModeExtendedEvents | vklp.ModePTS | vklp.ModeFriendOnlineExtra | vklp.ModeMessageRandomID,
+		Version: vklp.V1,
 	})
 	if err != nil {
 		panic(err.Error())
@@ -84,6 +86,12 @@ func main() {
 
 		case *vklp.FriendOffline:
 			fmt.Printf("friend offline: %d\n", upd.UserID)
+
+		case []byte:
+			// some events are not supported by this lib,
+			// or even are not documented on https://vk.com/dev/using_longpoll ,
+			// so these updates are returned as raw JSON byte slice:
+			fmt.Printf("unknown update: %s\n", string(upd))
 
 		default:
 			// reject updates, that you are not interested in:

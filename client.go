@@ -10,8 +10,20 @@ import (
 )
 
 const (
+	ModeAttachments       uint8 = 2   // 2 — получать вложения
+	ModeExtendedEvents    uint8 = 8   // 8 — возвращать расширенный набор событий
+	ModePTS               uint8 = 32  // 32 — возвращать pts (это требуется для работы метода messages.getLongPollHistory без ограничения в 256 последних событий)
+	ModeFriendOnlineExtra uint8 = 64  // 64 — в событии с кодом 8 (друг стал онлайн) возвращать дополнительные данные в поле $extra
+	ModeMessageRandomID   uint8 = 128 // 128 — возвращать с сообщением параметр random_id (random_id может быть передан при отправке сообщения методом https://vk.com/dev/messages.send)
+)
+
+const (
+	V0 uint8 = 0 // Для версии 0 (по умолчанию) идентификаторы сообществ будут приходить в формате group_id + 1000000000 для сохранения обратной совместимости
+	V1 uint8 = 1 // Актуальная версия: 1
+)
+
+const (
 	DefaultScheme = "https"
-	DefaultMode   = ModeAttachmentsOff
 	DefaultWait   = 25 * time.Second
 )
 
@@ -21,11 +33,12 @@ type Client interface {
 }
 
 type Options struct {
-	Server string
-	Key    string
-	TS     time.Time
-	Mode   Mode
-	Wait   time.Duration
+	Server  string
+	Key     string
+	TS      time.Time
+	Wait    time.Duration
+	Mode    uint8
+	Version uint8
 }
 
 type HTTPClient interface {
@@ -49,6 +62,8 @@ func From(httpClient HTTPClient, options Options) (Client, error) {
 	q.Set("act", "a_check")
 	q.Set("key", options.Key)
 	q.Set("ts", strconv.FormatInt(options.TS.Unix(), 10))
+	q.Set("mode", strconv.FormatUint(uint64(options.Mode), 10))
+	q.Set("version", strconv.FormatUint(uint64(options.Version), 10))
 
 	wait := DefaultWait
 	if options.Wait != 0 {
@@ -56,23 +71,16 @@ func From(httpClient HTTPClient, options Options) (Client, error) {
 	}
 	q.Set("wait", strconv.FormatInt(int64(wait.Seconds()), 10))
 
-	mode := DefaultMode
-	if options.Mode != 0 {
-		mode = options.Mode
-	}
-	q.Set("mode", strconv.FormatUint(uint64(mode), 10))
-
 	u.RawQuery = q.Encode()
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	c := &client{
+	return &client{
 		http:   httpClient,
 		url:    u,
 		ctx:    ctx,
 		cancel: cancel,
-	}
-	return c, nil
+	}, nil
 }
 
 // ----------------------------------------------------------------------------
@@ -84,7 +92,7 @@ type client struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	updates []interface{}
+	updates [][]byte
 }
 
 func (c *client) Stop() error {
@@ -112,7 +120,7 @@ func (c *client) Next() (interface{}, error) {
 		} else {
 			c.updates = nil
 		}
-		return upd, nil
+		return unmarshalUpdate(upd)
 	}
 
 	req, err := http.NewRequest("GET", c.url.String(), nil)
@@ -129,26 +137,21 @@ func (c *client) Next() (interface{}, error) {
 	wrapper := new(struct {
 		TS      int64             `json:"ts,omitempty"`
 		Updates []json.RawMessage `json:"updates,omitempty"`
-		Failed  *Error            `json:"failed,omitempty"`
+		Failed  uint8             `json:"failed,omitempty"`
 	})
 
 	if err = json.NewDecoder(resp.Body).Decode(wrapper); err != nil {
 		return nil, err
 	}
 
-	if wrapper.Failed != nil {
-		return nil, *wrapper.Failed
+	if wrapper.Failed != 0 {
+		return nil, Error(wrapper.Failed)
 	}
 
-	updates := make([]interface{}, len(wrapper.Updates))
-	for i, b := range wrapper.Updates {
-		upd, err := unmarshalUpdate(b)
-		if err != nil {
-			return nil, err
-		}
-		updates[i] = upd
+	c.updates = make([][]byte, len(wrapper.Updates))
+	for i, upd := range wrapper.Updates {
+		c.updates[i] = upd
 	}
-	c.updates = updates
 
 	q := c.url.Query()
 	q.Set("ts", strconv.FormatInt(wrapper.TS, 10))
