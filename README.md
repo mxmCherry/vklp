@@ -5,26 +5,15 @@ Low-level Go (Golang) [vk.com longpoll](https://vk.com/dev/using_longpoll) clien
 WARNING - work in progress!
 
 
-# TODO
-
-- [x] review update user ID type - probably, can be negative (groups / public pages: `userID = groupID + 1_000_000_000`)
-- [ ] review [vk.com/dev/using_longpoll](https://vk.com/dev/using_longpoll) - Russian version seems to be more accurate/detailed
-- [ ] update pooling (`sync.Pool`, `.Release` method on each update type)
-- [ ] tests (`Client`, `unmarshalUpdate`)
-- [ ] godoc comments
-- [ ] more sophisticated types with custom `unmarshalJSON` (timestamp - `time.Time`, `uint8` - `bool`, attachments - should be a list of `Attachment` etc)
-- [x] think of possibility of returning `[]byte` to allow clients handle updates, unsupported by this lib (some events are not even documented on [vk.com/dev/using_longpoll](https://vk.com/dev/using_longpoll))
-- [ ] think of possibility to store both update object and unmarshaller error (should never occur, but theoretically will allow to skip "broken" updates instead of rejecting entire batch)
-
-
 # Example
 
 ```go
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"time"
+	"strconv"
 
 	"github.com/mxmCherry/vkapi"
 	"github.com/mxmCherry/vklp"
@@ -46,9 +35,9 @@ func main() {
 	}
 
 	lpRes := new(struct {
-		Server string `json:"server"`
-		Key    string `json:"key"`
-		TS     int64  `json:"ts"`
+		Server string          `json:"server"`
+		Key    string          `json:"key"`
+		TS     json.RawMessage `json:"ts"`
 	})
 
 	err := api.Exec("messages.getLongPollServer", vkapi.ToParams(lpReq), lpRes)
@@ -58,46 +47,53 @@ func main() {
 
 	// consume updates with longpoll:
 
+	// instantiate longpoll client:
 	lp, err := vklp.New(vklp.Options{
 		Server:  lpRes.Server,
 		Key:     lpRes.Key,
-		TS:      time.Unix(lpRes.TS, 0),
-		Mode:    vklp.ModeAttachments | vklp.ModeExtendedEvents | vklp.ModePTS | vklp.ModeFriendOnlineExtra | vklp.ModeMessageRandomID,
-		Version: vklp.V1,
+		TS:      string(lpRes.TS),
+		Mode:    strconv.FormatInt(2|8|32|64|128, 10),
+		Version: "1",
 	})
 	if err != nil {
 		panic(err.Error())
 	}
 	defer lp.Stop()
 
+	// process events:
 	for {
-		update, err := lp.Next()
-		if err != nil {
+
+		// load next event:
+		if err = lp.Next(); err != nil {
 			panic(err.Error())
 		}
 
-		switch upd := update.(type) {
+		// decode event type:
+		var t uint8
+		if err := lp.Decode(&t); err != nil {
+			panic(err.Error())
+		}
 
-		case *vklp.AddNewMessage:
-			fmt.Printf("new message from %d: %s\n", upd.FromID, upd.Text)
+		// decode events by their types:
+		switch t {
 
-		case *vklp.FriendOnline:
-			fmt.Printf("friend online: %d\n", upd.UserID)
+		case 4: // received new message:
+			var (
+				messageID uint64
+				peerID    int64
+				subject   string
+				text      string
+			)
+			// [$message_id, $flags, $peer_id, $timestamp, $subject, $text, $attachments, $random_id]
+			if err = lp.Decode(&messageID, vklp.Skip, &peerID, vklp.Skip, &subject, &text); err != nil {
+				panic(err.Error())
+			}
+			fmt.Printf("received new message %d from %d: %s - %s\n", messageID, peerID, subject, text)
 
-		case *vklp.FriendOffline:
-			fmt.Printf("friend offline: %d\n", upd.UserID)
+		default: // drop unused events:
+			fmt.Printf("dropped unused event %d\n", t)
+		}
 
-		case []byte:
-			// some events are not supported by this lib,
-			// or even are not documented on https://vk.com/dev/using_longpoll ,
-			// so these updates are returned as raw JSON byte slice:
-			fmt.Printf("unknown update: %s\n", string(upd))
-
-		default:
-			// reject updates, that you are not interested in:
-			fmt.Printf("rejected update: %#v\n", upd)
-
-		} // end switch
 	} // end for
-}
+} // end main
 ```

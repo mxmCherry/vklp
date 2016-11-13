@@ -1,44 +1,38 @@
 package vklp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
-	"time"
 )
 
-const (
-	ModeAttachments       uint8 = 2   // 2 — получать вложения
-	ModeExtendedEvents    uint8 = 8   // 8 — возвращать расширенный набор событий
-	ModePTS               uint8 = 32  // 32 — возвращать pts (это требуется для работы метода messages.getLongPollHistory без ограничения в 256 последних событий)
-	ModeFriendOnlineExtra uint8 = 64  // 64 — в событии с кодом 8 (друг стал онлайн) возвращать дополнительные данные в поле $extra
-	ModeMessageRandomID   uint8 = 128 // 128 — возвращать с сообщением параметр random_id (random_id может быть передан при отправке сообщения методом https://vk.com/dev/messages.send)
-)
+type skipper struct{}
+
+var Skip skipper
 
 const (
-	V0 uint8 = 0 // Для версии 0 (по умолчанию) идентификаторы сообществ будут приходить в формате group_id + 1000000000 для сохранения обратной совместимости
-	V1 uint8 = 1 // Актуальная версия: 1
-)
-
-const (
-	DefaultScheme = "https"
-	DefaultWait   = 25 * time.Second
+	DefaultScheme  = "https"
+	DefaultWait    = "25"
+	DefaultMode    = "0"
+	DefaultVersion = "1"
 )
 
 type Client interface {
-	Next() (interface{}, error)
+	Next() error
+	Decode(...interface{}) error
 	Stop() error
 }
 
 type Options struct {
 	Server  string
 	Key     string
-	TS      time.Time
-	Wait    time.Duration
-	Mode    uint8
-	Version uint8
+	TS      string
+	Wait    string
+	Mode    string
+	Version string
 }
 
 type HTTPClient interface {
@@ -58,39 +52,58 @@ func From(httpClient HTTPClient, options Options) (Client, error) {
 		u.Scheme = DefaultScheme
 	}
 
+	if options.Wait == "" {
+		options.Wait = DefaultWait
+	}
+	if options.Mode == "" {
+		options.Mode = DefaultMode
+	}
+	if options.Version == "" {
+		options.Version = DefaultVersion
+	}
+
 	q := u.Query()
 	q.Set("act", "a_check")
 	q.Set("key", options.Key)
-	q.Set("ts", strconv.FormatInt(options.TS.Unix(), 10))
-	q.Set("mode", strconv.FormatUint(uint64(options.Mode), 10))
-	q.Set("version", strconv.FormatUint(uint64(options.Version), 10))
-
-	wait := DefaultWait
-	if options.Wait != 0 {
-		wait = options.Wait
-	}
-	q.Set("wait", strconv.FormatInt(int64(wait.Seconds()), 10))
+	q.Set("ts", options.TS)
+	q.Set("mode", options.Mode)
+	q.Set("version", options.Version)
+	q.Set("wait", options.Wait)
 
 	u.RawQuery = q.Encode()
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	r := bytes.NewReader(nil)
+	d := json.NewDecoder(r)
+
 	return &client{
-		http:   httpClient,
-		url:    u,
+		http:  httpClient,
+		url:   u,
+		query: q,
+
 		ctx:    ctx,
 		cancel: cancel,
+
+		reader: r,
+		json:   d,
 	}, nil
 }
 
 // ----------------------------------------------------------------------------
 
+const jsonArrayOpener = json.Delim('[')
+
 type client struct {
-	http HTTPClient
-	url  *url.URL
+	http  HTTPClient
+	url   *url.URL
+	query url.Values
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	reader *bytes.Reader
+	json   *json.Decoder
 
 	updates [][]byte
 }
@@ -106,10 +119,10 @@ func (c *client) Stop() error {
 	return nil
 }
 
-func (c *client) Next() (interface{}, error) {
+func (c *client) Next() error {
 	select {
 	case <-c.ctx.Done():
-		return nil, c.ctx.Err()
+		return c.ctx.Err()
 	default:
 	}
 
@@ -120,32 +133,41 @@ func (c *client) Next() (interface{}, error) {
 		} else {
 			c.updates = nil
 		}
-		return unmarshalUpdate(upd)
+
+		c.reader.Reset(upd)
+		c.json = json.NewDecoder(c.reader)
+
+		if t, err := c.json.Token(); err != nil {
+			return err
+		} else if delim, ok := t.(json.Delim); !ok || delim != jsonArrayOpener {
+			return fmt.Errorf("vklp: expected JSON to start with array opening bracket '[', but got: %#v", t)
+		}
+		return nil
 	}
 
 	req, err := http.NewRequest("GET", c.url.String(), nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	req = req.WithContext(c.ctx)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	wrapper := new(struct {
-		TS      int64             `json:"ts,omitempty"`
+		TS      json.RawMessage   `json:"ts,omitempty"`
 		Updates []json.RawMessage `json:"updates,omitempty"`
 		Failed  uint8             `json:"failed,omitempty"`
 	})
 
 	if err = json.NewDecoder(resp.Body).Decode(wrapper); err != nil {
-		return nil, err
+		return err
 	}
 
 	if wrapper.Failed != 0 {
-		return nil, Error(wrapper.Failed)
+		return Error(wrapper.Failed)
 	}
 
 	c.updates = make([][]byte, len(wrapper.Updates))
@@ -153,9 +175,24 @@ func (c *client) Next() (interface{}, error) {
 		c.updates[i] = upd
 	}
 
-	q := c.url.Query()
-	q.Set("ts", strconv.FormatInt(wrapper.TS, 10))
-	c.url.RawQuery = q.Encode()
+	c.query.Set("ts", string(wrapper.TS))
+	c.url.RawQuery = c.query.Encode()
 
 	return c.Next()
+}
+
+func (c *client) Decode(vs ...interface{}) error {
+	for i := 0; i < len(vs); i++ {
+		if !c.json.More() {
+			return nil
+		}
+		if vs[i] == Skip {
+			var discard interface{}
+			vs[i] = &discard
+		}
+		if err := c.json.Decode(vs[i]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
