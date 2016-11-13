@@ -66,10 +66,9 @@ func From(httpClient HTTPClient, options Options) (Client, error) {
 	q.Set("act", "a_check")
 	q.Set("key", options.Key)
 	q.Set("ts", options.TS)
+	q.Set("wait", options.Wait)
 	q.Set("mode", options.Mode)
 	q.Set("version", options.Version)
-	q.Set("wait", options.Wait)
-
 	u.RawQuery = q.Encode()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -161,11 +160,9 @@ func (c *client) Next() error {
 		Updates []json.RawMessage `json:"updates,omitempty"`
 		Failed  uint8             `json:"failed,omitempty"`
 	})
-
 	if err = json.NewDecoder(resp.Body).Decode(wrapper); err != nil {
 		return err
 	}
-
 	if wrapper.Failed != 0 {
 		return Error(wrapper.Failed)
 	}
