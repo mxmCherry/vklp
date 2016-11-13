@@ -9,9 +9,7 @@ import (
 	"net/url"
 )
 
-type skipper struct{}
-
-var Skip skipper
+var Skip struct{}
 
 const (
 	DefaultScheme  = "https"
@@ -36,7 +34,7 @@ type Options struct {
 }
 
 type HTTPClient interface {
-	Do(req *http.Request) (*http.Response, error)
+	Do(*http.Request) (*http.Response, error)
 }
 
 func New(options Options) (Client, error) {
