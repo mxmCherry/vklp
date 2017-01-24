@@ -13,8 +13,11 @@ import (
 var Skip struct{}
 
 const (
-	DefaultScheme = "https" // TODO: make private?
-	DefaultWait   = 25      // TODO: remove it?
+	ModeAttachments = 2
+	ModeExtended    = 8
+	ModePTS         = 32
+	ModeExtra       = 64
+	ModeRandomID    = 128
 )
 
 type Client interface {
@@ -26,9 +29,9 @@ type Client interface {
 type Options struct {
 	Server  string
 	Key     string
-	TS      int64 // TODO: use time.Time?
-	Wait    int64 // TODO: use time.Duration?
-	Mode    int64 // TODO: create algebraic type?
+	TS      int64
+	Wait    int64
+	Mode    uint64
 	Version string
 }
 
@@ -46,11 +49,7 @@ func From(httpClient HTTPClient, options Options) (Client, error) {
 		return nil, err
 	}
 	if u.Scheme == "" {
-		u.Scheme = DefaultScheme
-	}
-
-	if options.Wait == 0 {
-		options.Wait = DefaultWait
+		u.Scheme = "https"
 	}
 
 	q := u.Query()
@@ -58,7 +57,7 @@ func From(httpClient HTTPClient, options Options) (Client, error) {
 	q.Set("key", options.Key)
 	q.Set("ts", strconv.FormatInt(options.TS, 10))
 	q.Set("wait", strconv.FormatInt(options.Wait, 10))
-	q.Set("mode", strconv.FormatInt(options.Mode, 10))
+	q.Set("mode", strconv.FormatUint(options.Mode, 10))
 	q.Set("version", options.Version)
 	u.RawQuery = q.Encode()
 

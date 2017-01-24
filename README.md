@@ -51,7 +51,7 @@ func main() {
 		Server:  lpRes.Server,
 		Key:     lpRes.Key,
 		TS:      lpRes.TS,
-		Mode:    2 | 8 | 32 | 64 | 128,
+		Mode:    vklp.ModeAttachments | vklp.ModeExtended | vklp.ModePTS | vklp.ModeExtra | vklp.ModeRandomID,
 		Version: "1",
 	})
 	if err != nil {
