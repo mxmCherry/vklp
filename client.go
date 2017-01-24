@@ -40,7 +40,7 @@ type HTTPClient interface {
 }
 
 func New(options Options) (Client, error) {
-	return From(new(http.Client), options)
+	return From(http.DefaultClient, options)
 }
 
 func From(httpClient HTTPClient, options Options) (Client, error) {
