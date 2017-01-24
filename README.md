@@ -11,9 +11,7 @@ WARNING - work in progress!
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"strconv"
 
 	"github.com/mxmCherry/vkapi"
 	"github.com/mxmCherry/vklp"
@@ -25,6 +23,7 @@ func main() {
 
 	api := vkapi.New(vkapi.Options{
 		AccessToken: "YOUR_ACCESS_TOKEN",
+		Version:     "5.62",
 	})
 
 	lpReq := struct {
@@ -35,9 +34,9 @@ func main() {
 	}
 
 	lpRes := new(struct {
-		Server string          `json:"server"`
-		Key    string          `json:"key"`
-		TS     json.RawMessage `json:"ts"`
+		Server string `json:"server"`
+		Key    string `json:"key"`
+		TS     int64  `json:"ts"`
 	})
 
 	err := api.Exec("messages.getLongPollServer", vkapi.ToParams(lpReq), lpRes)
@@ -51,8 +50,8 @@ func main() {
 	lp, err := vklp.New(vklp.Options{
 		Server:  lpRes.Server,
 		Key:     lpRes.Key,
-		TS:      string(lpRes.TS),
-		Mode:    strconv.FormatInt(2|8|32|64|128, 10),
+		TS:      lpRes.TS,
+		Mode:    2 | 8 | 32 | 64 | 128,
 		Version: "1",
 	})
 	if err != nil {

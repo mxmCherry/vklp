@@ -7,15 +7,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 )
 
 var Skip struct{}
 
 const (
-	DefaultScheme  = "https"
-	DefaultWait    = "25"
-	DefaultMode    = "0"
-	DefaultVersion = "1"
+	DefaultScheme = "https" // TODO: make private?
+	DefaultWait   = 25      // TODO: remove it?
 )
 
 type Client interface {
@@ -27,9 +26,9 @@ type Client interface {
 type Options struct {
 	Server  string
 	Key     string
-	TS      string
-	Wait    string
-	Mode    string
+	TS      int64 // TODO: use time.Time?
+	Wait    int64 // TODO: use time.Duration?
+	Mode    int64 // TODO: create algebraic type?
 	Version string
 }
 
@@ -50,22 +49,16 @@ func From(httpClient HTTPClient, options Options) (Client, error) {
 		u.Scheme = DefaultScheme
 	}
 
-	if options.Wait == "" {
+	if options.Wait == 0 {
 		options.Wait = DefaultWait
-	}
-	if options.Mode == "" {
-		options.Mode = DefaultMode
-	}
-	if options.Version == "" {
-		options.Version = DefaultVersion
 	}
 
 	q := u.Query()
 	q.Set("act", "a_check")
 	q.Set("key", options.Key)
-	q.Set("ts", options.TS)
-	q.Set("wait", options.Wait)
-	q.Set("mode", options.Mode)
+	q.Set("ts", strconv.FormatInt(options.TS, 10))
+	q.Set("wait", strconv.FormatInt(options.Wait, 10))
+	q.Set("mode", strconv.FormatInt(options.Mode, 10))
 	q.Set("version", options.Version)
 	u.RawQuery = q.Encode()
 

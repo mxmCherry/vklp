@@ -26,9 +26,9 @@ var _ = Describe("Client", func() {
 		subject, err = vklp.From(httpClient, vklp.Options{
 			Server:  "some.domain/some/path?one=1&two=2",
 			Key:     "DUMMY_KEY",
-			TS:      "1111111111",
-			Wait:    "1111",
-			Mode:    "111",
+			TS:      1111111111,
+			Wait:    1111,
+			Mode:    111,
 			Version: "11",
 		})
 		Expect(err).NotTo(HaveOccurred())
