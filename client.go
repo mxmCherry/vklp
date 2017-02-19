@@ -20,10 +20,18 @@ const (
 	ModeRandomID    = 128
 )
 
-type Client interface {
-	Next() error
-	Decode(...interface{}) error
-	Stop() error
+type Client struct {
+	http  HTTPClient
+	url   *url.URL
+	query url.Values
+
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	reader *bytes.Reader
+	json   *json.Decoder
+
+	updates [][]byte
 }
 
 type Options struct {
@@ -39,11 +47,11 @@ type HTTPClient interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
-func New(options Options) (Client, error) {
+func New(options Options) (*Client, error) {
 	return From(http.DefaultClient, options)
 }
 
-func From(httpClient HTTPClient, options Options) (Client, error) {
+func From(httpClient HTTPClient, options Options) (*Client, error) {
 	u, err := url.Parse(options.Server)
 	if err != nil {
 		return nil, err
@@ -66,7 +74,7 @@ func From(httpClient HTTPClient, options Options) (Client, error) {
 	r := bytes.NewReader(nil)
 	d := json.NewDecoder(r)
 
-	return &client{
+	return &Client{
 		http:  httpClient,
 		url:   u,
 		query: q,
@@ -83,21 +91,7 @@ func From(httpClient HTTPClient, options Options) (Client, error) {
 
 const jsonArrayOpener = json.Delim('[')
 
-type client struct {
-	http  HTTPClient
-	url   *url.URL
-	query url.Values
-
-	ctx    context.Context
-	cancel context.CancelFunc
-
-	reader *bytes.Reader
-	json   *json.Decoder
-
-	updates [][]byte
-}
-
-func (c *client) Stop() error {
+func (c *Client) Stop() error {
 	select {
 	case <-c.ctx.Done():
 		return c.ctx.Err()
@@ -108,7 +102,7 @@ func (c *client) Stop() error {
 	return nil
 }
 
-func (c *client) Next() error {
+func (c *Client) Next() error {
 	select {
 	case <-c.ctx.Done():
 		return c.ctx.Err()
@@ -168,7 +162,7 @@ func (c *client) Next() error {
 	return c.Next()
 }
 
-func (c *client) Decode(vs ...interface{}) error {
+func (c *Client) Decode(vs ...interface{}) error {
 	for i := 0; i < len(vs); i++ {
 		if !c.json.More() {
 			return nil

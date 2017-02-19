@@ -11,7 +11,7 @@ import (
 
 var _ = Describe("Client", func() {
 	var httpClient *mockHTTPClient
-	var subject vklp.Client
+	var subject *vklp.Client
 
 	BeforeEach(func() {
 		httpClient = &mockHTTPClient{
